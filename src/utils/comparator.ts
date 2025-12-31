@@ -1,19 +1,25 @@
 import type { CostMapping, ComparisonResult, FileData, ExcelRow } from '../types';
 
-
 const normalizeStr = (val: any): string => {
     if (val === null || val === undefined) return '';
-    // Strong normalization: remove whitespace, diacritics, lowercase
-    // e.g. "  SỐ CONT 123 " -> "socont123"
-    // But for Value matching (like actual Cont No), maybe just trim.
-    // The user requirement implies keys are Cont and Date.
-    return String(val).trim().toUpperCase(); // Keep Case for ID? Usually Uppercase is safer.
+    return String(val).trim().toUpperCase();
 };
 
 const normalizeDate = (val: any): string => {
     if (val instanceof Date) return val.toISOString().split('T')[0];
-    // Handle common formats if needed, for now exact string match
     return String(val).trim();
+};
+
+const normalizeContainerNo = (val: any): string => {
+    const str = normalizeStr(val);
+    const match = str.match(/[A-Z]{4}[0-9]+/);
+    return match ? match[0] : str;
+};
+
+const normalizeBillNo = (val: any): string => {
+    const str = normalizeStr(val);
+    const match = str.match(/\b[A-Z0-9]*[0-9]+[A-Z0-9]*\b/);
+    return match ? match[0] : str;
 };
 
 const parseCost = (val: any): number => {
@@ -23,98 +29,104 @@ const parseCost = (val: any): number => {
     return parseFloat(cleaned) || 0;
 };
 
-// Calculate total cost for a row based on mapping
-const calculateRowCost = (row: ExcelRow, mapping: CostMapping): number => {
+export const calculateRowCost = (row: ExcelRow, mapping: CostMapping): number => {
     let total = 0;
-    // Sum all categories
-    const categories: (keyof CostMapping)[] = ['liftUnload', 'containerDeposit', 'toll', 'transportFee', 'freightCharge', 'warehouseTransfer'];
+    const categories: (keyof CostMapping)[] = ['liftUnload', 'containerDeposit', 'toll', 'transportFee', 'warehouseTransfer', 'weighingFee', 'cleaningFee', 'overweightFee', 'detentionFee', 'storageFee', 'vat'];
 
     categories.forEach(cat => {
-        const columns = mapping[cat] as string[]; // Type assertion
+        const columns = mapping[cat] as string[];
         columns.forEach(col => {
             total += parseCost(row[col]);
         });
     });
+
+    if (mapping.additionalCosts) {
+        Object.values(mapping.additionalCosts).forEach(columns => {
+            columns.forEach(col => {
+                total += parseCost(row[col]);
+            });
+        });
+    }
     return total;
 };
 
 
-
-
-export const compareFiles = (
-    fileA: FileData,
-    fileB: FileData,
+export const compareBatchFiles = (
+    filesA: FileData[],
+    filesB: FileData[],
     mappingA: CostMapping,
     mappingB: CostMapping,
-    selectedSheetsA: string[], // List of sheet names to use
+    selectedSheetsA: string[], // Format: "FileName::SheetName"
     selectedSheetsB: string[]
 ): ComparisonResult[] => {
 
-    // Data Structure: Map<Key, { rows: [], totalCost: 0 }>
     interface AggregatedData {
         rows: ExcelRow[];
         totalCost: number;
-        breakdown: Record<string, number>; // Accumulated breakdown
         contractNo: string;
         date: string;
         billNo?: string;
     }
 
-    const aggregateParams = (file: FileData, mapping: CostMapping, selectedSheets: string[]) => {
+    const aggregateParams = (files: FileData[], mapping: CostMapping, selectedSheets: string[]) => {
         const map = new Map<string, AggregatedData>();
 
-        file.sheets.forEach(sheet => {
-            if (!selectedSheets.includes(sheet.sheetName)) return;
+        files.forEach(file => {
+            file.sheets.forEach(sheet => {
+                // Check if this sheet is selected
+                // Key format: FileName::SheetName
+                const sheetKey = `${file.fileName}::${sheet.sheetName}`;
+                if (!selectedSheets.includes(sheetKey)) return;
 
-            sheet.data.forEach(row => {
-                // 1. Get Key
-                const contractNo = normalizeStr(row[mapping.contractNo]);
-                const date = normalizeDate(row[mapping.date]);
-                // If BillNo is used, append it
-                // Let's stick to Cont+Date as primary, as requested.
+                sheet.data.forEach(row => {
+                    const contractNo = normalizeContainerNo(row[mapping.contractNo]);
+                    const date = normalizeDate(row[mapping.date]);
+                    const billNoStr = mapping.billNo ? normalizeBillNo(row[mapping.billNo]) : '';
 
-                if (!contractNo || !date) return; // Skip invalid rows
+                    // Strict requirement: Compare Contract -> Date -> Bill
+                    if (!contractNo || !date) return;
 
-                const key = `${contractNo}|${date}`;
+                    // Key now includes Bill No
+                    const key = `${contractNo}|${date}|${billNoStr}`;
+                    const cost = calculateRowCost(row, mapping);
 
-                // 2. Calculate Cost
-                const cost = calculateRowCost(row, mapping);
-                // const rowBreakdown = getBreakdown(row, mapping); 
+                    if (!map.has(key)) {
+                        map.set(key, {
+                            rows: [],
+                            totalCost: 0,
+                            contractNo: row[mapping.contractNo], // Keep original value
+                            date: row[mapping.date],
+                            billNo: mapping.billNo ? row[mapping.billNo] : undefined
+                        });
+                    }
 
-                if (!map.has(key)) {
-                    map.set(key, {
-                        rows: [],
-                        totalCost: 0,
-                        breakdown: {},
-                        contractNo: row[mapping.contractNo], // Store original value
-                        date: row[mapping.date],
-                        billNo: mapping.billNo ? row[mapping.billNo] : undefined
-                    });
-                }
-
-                const entry = map.get(key)!;
-                entry.rows.push(row);
-                entry.totalCost += cost;
-                // Aggregate breakdown logic would go here if needed
+                    const entry = map.get(key)!;
+                    // Enhance row with source info for Details View
+                    const enhancedRow = {
+                        ...row,
+                        _sourceFile: file.fileName,
+                        _sourceSheet: sheet.sheetName
+                    };
+                    entry.rows.push(enhancedRow);
+                    entry.totalCost += cost;
+                });
             });
         });
         return map;
     };
 
-    const aggA = aggregateParams(fileA, mappingA, selectedSheetsA);
-    const aggB = aggregateParams(fileB, mappingB, selectedSheetsB);
+    const aggA = aggregateParams(filesA, mappingA, selectedSheetsA);
+    const aggB = aggregateParams(filesB, mappingB, selectedSheetsB);
 
     const results: ComparisonResult[] = [];
     const processedKeys = new Set<string>();
 
-    // Compare A against B
     aggA.forEach((dataA, key) => {
         processedKeys.add(key);
         const dataB = aggB.get(key);
 
         if (dataB) {
             const diff = dataA.totalCost - dataB.totalCost;
-            // Tolerance for floating point
             const status = Math.abs(diff) < 1.0 ? 'MATCH' : 'MISMATCH';
 
             results.push({
@@ -145,7 +157,6 @@ export const compareFiles = (
         }
     });
 
-    // Check Missing A
     aggB.forEach((dataB, key) => {
         if (processedKeys.has(key)) return;
 

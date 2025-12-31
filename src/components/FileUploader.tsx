@@ -65,8 +65,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
                         accept=".xlsx,.xls,.csv"
                     />
                     <Upload className="w-10 h-10 text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-600 font-medium">Click or drag file here</p>
-                    <p className="text-xs text-gray-500">Excel or CSV</p>
+                    <p className="text-sm text-gray-600 font-medium">Bấm hoặc kéo thả file vào đây</p>
+                    <p className="text-xs text-gray-500">Hỗ trợ Excel hoặc CSV</p>
                 </div>
             ) : (
                 <div className="flex items-center p-4 bg-white border border-gray-200 rounded-lg shadow-sm">

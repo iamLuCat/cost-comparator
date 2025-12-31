@@ -6,6 +6,7 @@ export interface SheetData {
     sheetName: string;
     headers: string[];
     data: ExcelRow[];
+    headerRowIndex?: number; // 1-based index of the header row
 }
 
 export interface FileData {
@@ -24,8 +25,14 @@ export interface CostMapping {
     containerDeposit: string[];  // Cuoc vo/Neo xe
     toll: string[];              // Phi cau duong/BOT
     transportFee: string[];      // Cuoc xe
-    freightCharge: string[];     // Cuoc cont
     warehouseTransfer: string[]; // Chuyen kho
+    weighingFee: string[];       // Phi can xe
+    cleaningFee: string[];       // Phi ve sinh
+    overweightFee: string[];     // Phi qua tai
+    detentionFee: string[];      // Phi neo xe
+    storageFee: string[];        // Phi gui cont
+    vat: string[];               // VAT
+    additionalCosts?: Record<string, string[]>; // Custom User Defined Costs
 }
 
 export interface ComparisonResult {
