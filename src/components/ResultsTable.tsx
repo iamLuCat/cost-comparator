@@ -18,7 +18,7 @@ const STATUS_MAP: Record<string, string> = {
 };
 
 export const ResultsTable: React.FC<ResultsTableProps> = ({ results, mappingA, mappingB }) => {
-    const [filter, setFilter] = useState<'ALL' | 'MISMATCH' | 'MISSING'>('ALL');
+    const [filter, setFilter] = useState<'ALL' | 'MISMATCH' | 'MISSING' | 'MATCH'>('ALL');
     const [search, setSearch] = useState('');
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -41,6 +41,7 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, mappingA, m
 
     const filteredResults = useMemo(() => {
         let res = results.filter(r => {
+            if (filter === 'MATCH' && r.status !== 'MATCH') return false;
             if (filter === 'MISMATCH' && r.status !== 'MISMATCH') return false;
             if (filter === 'MISSING' && !r.status.includes('MISSING')) return false;
             if (search) {
@@ -67,6 +68,7 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, mappingA, m
         return res;
     }, [results, filter, search, sortConfig]);
 
+    // ... (rest of logic: stats, downloadReport, format functions) ...
     const stats = useMemo(() => ({
         match: results.filter(r => r.status === 'MATCH').length,
         mismatch: results.filter(r => r.status === 'MISMATCH').length,
@@ -113,6 +115,9 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, mappingA, m
     };
 
     const renderDetailRows = (rows: ExcelRow[], side: 'A' | 'B', mapping: CostMapping) => {
+        // ... (renderDetailRows logic is fine, omitting large chunks for brevity if not changing, but previous replace truncated it too much) ...
+        // Actually, let's just make sure we insert the Toolbar button correctly.
+        // We can jump to the JSX return.
         if (rows.length === 0) return <p className="text-sm text-gray-400 italic">Không có dữ liệu Bên {side}</p>;
 
         const relevantKeys = new Set<string>([
@@ -196,10 +201,26 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, mappingA, m
         );
     };
 
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 15;
+
+    const paginatedResults = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredResults.slice(start, start + itemsPerPage);
+    }, [filteredResults, currentPage]);
+
+    const totalPages = Math.ceil(filteredResults.length / itemsPerPage);
+
+    // Reset page when filter/search changes
+    useMemo(() => {
+        setCurrentPage(1);
+    }, [filter, search]);
+
     return (
         <div className="space-y-6">
-            {/* Stats Cards (Same as before) */}
-            <div className="hidden sm:grid grid-cols-3 gap-4"> {/* Simplified structure for brevity */}
+            {/* Stats Cards */}
+            <div className="hidden sm:grid grid-cols-3 gap-4">
                 <div className="bg-white p-3 rounded border shadow-sm flex justify-between">
                     <span className="text-gray-500">Khớp</span><span className="font-bold text-green-600">{stats.match}</span>
                 </div>
@@ -215,6 +236,7 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, mappingA, m
             <div className="flex justify-between items-center bg-white p-3 rounded border">
                 <div className="flex gap-2 text-sm">
                     <button onClick={() => setFilter('ALL')} className={cn("px-3 py-1 rounded", filter === 'ALL' && "bg-gray-800 text-white")}>Tất cả</button>
+                    <button onClick={() => setFilter('MATCH')} className={cn("px-3 py-1 rounded", filter === 'MATCH' && "bg-green-600 text-white")}>Khớp</button>
                     <button onClick={() => setFilter('MISMATCH')} className={cn("px-3 py-1 rounded", filter === 'MISMATCH' && "bg-red-600 text-white")}>Lệch</button>
                     <button onClick={() => setFilter('MISSING')} className={cn("px-3 py-1 rounded", filter === 'MISSING' && "bg-yellow-500 text-white")}>Thiếu</button>
                 </div>
@@ -241,123 +263,168 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, mappingA, m
             </div>
 
             {/* Main Table */}
-            <div className="bg-white border rounded shadow-sm overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="w-8"></th>
-                            <th
-                                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors select-none"
-                                onClick={() => handleSort('status')}
-                            >
-                                <div className="flex items-center gap-1">
-                                    Trạng Thái
-                                    {sortConfig.key === 'status' ? (
-                                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                                    ) : <ArrowUpDown className="w-3 h-3 text-gray-300" />}
-                                </div>
-                            </th>
-                            <th
-                                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors select-none"
-                                onClick={() => handleSort('contractNo')}
-                            >
-                                <div className="flex items-center gap-1">
-                                    Số Cont / Ngày
-                                    {sortConfig.key === 'contractNo' ? (
-                                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                                    ) : <ArrowUpDown className="w-3 h-3 text-gray-300" />}
-                                </div>
-                            </th>
-                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors select-none"
-                                onClick={() => handleSort('totalCostA')}
-                            >
-                                <div className="flex items-center justify-end gap-1">
-                                    Tổng A
-                                    {sortConfig.key === 'totalCostA' ? (
-                                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                                    ) : <ArrowUpDown className="w-3 h-3 text-gray-300" />}
-                                </div>
-                            </th>
-                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors select-none"
-                                onClick={() => handleSort('totalCostB')}
-                            >
-                                <div className="flex items-center justify-end gap-1">
-                                    Tổng B
-                                    {sortConfig.key === 'totalCostB' ? (
-                                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                                    ) : <ArrowUpDown className="w-3 h-3 text-gray-300" />}
-                                </div>
-                            </th>
-                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors select-none"
-                                onClick={() => handleSort('diff')}
-                            >
-                                <div className="flex items-center justify-end gap-1">
-                                    Chênh lệch
-                                    {sortConfig.key === 'diff' ? (
-                                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                                    ) : <ArrowUpDown className="w-3 h-3 text-gray-300" />}
-                                </div>
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredResults.map((r) => (
-                            <React.Fragment key={r.id}>
-                                <tr
-                                    className={cn("hover:bg-gray-50 cursor-pointer transition-colors", expandedIds.has(r.id) && "bg-blue-50")}
-                                    onClick={() => toggleExpand(r.id)}
+            <div className="bg-white border rounded shadow-sm overflow-hidden flex flex-col">
+                <div className="overflow-x-auto min-h-[600px]"> {/* Fixed min-height roughly for 20 items */}
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50 sticky top-0 z-10">
+                            <tr>
+                                <th className="w-8"></th>
+                                <th
+                                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                    onClick={() => handleSort('status')}
                                 >
-                                    <td className="px-2 text-gray-400">
-                                        {expandedIds.has(r.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className={cn(
-                                            "px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full",
-                                            r.status === 'MATCH' ? "bg-green-100 text-green-800" :
-                                                r.status === 'MISMATCH' ? "bg-red-100 text-red-800" :
-                                                    "bg-yellow-100 text-yellow-800"
-                                        )}>
-                                            {STATUS_MAP[r.status] || r.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="text-sm font-medium text-gray-900">{r.contractNo}</div>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setSearch(r.contractNo);
-                                                }}
-                                                className="text-gray-400 hover:text-blue-500 p-1 rounded hover:bg-gray-100"
-                                                title="Tìm theo số container này"
-                                            >
-                                                <Search className="w-3 h-3" />
-                                            </button>
-                                        </div>
-                                        <div className="text-xs text-gray-500">{formatDate(r.date)}</div>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-right">{formatCurrency(r.totalCostA)}</td>
-                                    <td className="px-4 py-3 text-sm text-right">{formatCurrency(r.totalCostB)}</td>
-                                    <td className={cn("px-4 py-3 text-sm text-right font-bold", r.diff !== 0 ? "text-red-600" : "text-gray-400")}>
-                                        {formatCurrency(r.diff)}
-                                    </td>
-                                </tr>
-
-                                {/* DETAIL SUB-ROW */}
-                                {expandedIds.has(r.id) && (
-                                    <tr className="bg-gray-50">
-                                        <td colSpan={6} className="px-4 py-4">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                {renderDetailRows(r.rowsA, 'A', mappingA)}
-                                                {renderDetailRows(r.rowsB, 'B', mappingB)}
+                                    <div className="flex items-center gap-1">
+                                        Trạng Thái
+                                        {sortConfig.key === 'status' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                        ) : <ArrowUpDown className="w-3 h-3 text-gray-300" />}
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                    onClick={() => handleSort('contractNo')}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        Số Cont / Ngày
+                                        {sortConfig.key === 'contractNo' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                        ) : <ArrowUpDown className="w-3 h-3 text-gray-300" />}
+                                    </div>
+                                </th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                    onClick={() => handleSort('totalCostA')}
+                                >
+                                    <div className="flex items-center justify-end gap-1">
+                                        Tổng A
+                                        {sortConfig.key === 'totalCostA' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                        ) : <ArrowUpDown className="w-3 h-3 text-gray-300" />}
+                                    </div>
+                                </th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                    onClick={() => handleSort('totalCostB')}
+                                >
+                                    <div className="flex items-center justify-end gap-1">
+                                        Tổng B
+                                        {sortConfig.key === 'totalCostB' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                        ) : <ArrowUpDown className="w-3 h-3 text-gray-300" />}
+                                    </div>
+                                </th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                    onClick={() => handleSort('diff')}
+                                >
+                                    <div className="flex items-center justify-end gap-1">
+                                        Chênh lệch
+                                        {sortConfig.key === 'diff' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                        ) : <ArrowUpDown className="w-3 h-3 text-gray-300" />}
+                                    </div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {paginatedResults.map((r) => (
+                                <React.Fragment key={r.id}>
+                                    <tr
+                                        className={cn("hover:bg-gray-50 cursor-pointer transition-colors h-[41px]", expandedIds.has(r.id) && "bg-blue-50")}
+                                        onClick={() => toggleExpand(r.id)}
+                                    >
+                                        <td className="px-2 text-gray-400">
+                                            {expandedIds.has(r.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            <span className={cn(
+                                                "px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full",
+                                                r.status === 'MATCH' ? "bg-green-100 text-green-800" :
+                                                    r.status === 'MISMATCH' ? "bg-red-100 text-red-800" :
+                                                        "bg-yellow-100 text-yellow-800"
+                                            )}>
+                                                {STATUS_MAP[r.status] || r.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className="text-sm font-medium text-gray-900">{r.contractNo}</div>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSearch(r.contractNo);
+                                                    }}
+                                                    className="text-gray-400 hover:text-blue-500 p-1 rounded hover:bg-gray-100"
+                                                    title="Tìm theo số container này"
+                                                >
+                                                    <Search className="w-3 h-3" />
+                                                </button>
                                             </div>
+                                            <div className="text-xs text-gray-500">{formatDate(r.date)}</div>
+                                        </td>
+                                        <td className="px-4 py-2 text-sm text-right">{formatCurrency(r.totalCostA)}</td>
+                                        <td className="px-4 py-2 text-sm text-right">{formatCurrency(r.totalCostB)}</td>
+                                        <td className={cn("px-4 py-2 text-sm text-right font-bold", r.diff !== 0 ? "text-red-600" : "text-gray-400")}>
+                                            {formatCurrency(r.diff)}
                                         </td>
                                     </tr>
-                                )}
-                            </React.Fragment>
-                        ))}
-                    </tbody>
-                </table>
+
+                                    {/* DETAIL SUB-ROW */}
+                                    {expandedIds.has(r.id) && (
+                                        <tr className="bg-gray-50">
+                                            <td colSpan={6} className="px-4 py-4">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {renderDetailRows(r.rowsA, 'A', mappingA)}
+                                                    {renderDetailRows(r.rowsB, 'B', mappingB)}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
+                            ))}
+                            {/* Empty placeholder rows to maintain height */}
+                            {Array.from({ length: Math.max(0, itemsPerPage - paginatedResults.length) }).map((_, i) => (
+                                <tr key={`empty-${i}`} className="h-[41px]">
+                                    <td colSpan={6}>&nbsp;</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Pagination Footer */}
+                {totalPages > 1 && (
+                    <div className="bg-gray-50 px-4 py-3 border-t border-gray-200 flex items-center justify-between sm:px-6">
+                        <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                            <div>
+                                <p className="text-sm text-gray-700">
+                                    Hiển thị <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> đến <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredResults.length)}</span> trong số <span className="font-medium">{filteredResults.length}</span> kết quả
+                                </p>
+                            </div>
+                            <div>
+                                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage === 1}
+                                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    >
+                                        <span className="sr-only">Previous</span>
+                                        <ChevronDown className="h-5 w-5 rotate-90" /> {/* Reusing ChevronDown as Left */}
+                                    </button>
+                                    {/* Simple Page Numbers: First ... Current-1, Current, Current+1 ... Last */}
+                                    <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                                        {currentPage} / {totalPages}
+                                    </span>
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage === totalPages}
+                                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    >
+                                        <span className="sr-only">Next</span>
+                                        <ChevronRight className="h-5 w-5" />
+                                    </button>
+                                </nav>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

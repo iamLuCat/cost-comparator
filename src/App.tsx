@@ -10,6 +10,7 @@ import { compareBatchFiles } from './utils/comparator';
 import { scanHeaders } from './utils/heuristicMapper';
 import type { CostMapping, ComparisonResult, FileData } from './types';
 import { cn } from './utils/cn';
+import { LoadingOverlay } from './components/LoadingOverlay';
 
 const initialMapping: CostMapping = {
   contractNo: '',
@@ -19,7 +20,6 @@ const initialMapping: CostMapping = {
   containerDeposit: [],
   toll: [],
   transportFee: [],
-  freightCharge: [],
   warehouseTransfer: [],
   weighingFee: [],
   cleaningFee: [],
@@ -98,20 +98,21 @@ function App() {
 
 
   const handleFile = async (file: File, isFileA: boolean) => {
+    setIsProcessing(true);
     try {
+      // Small delay to allow UI to render loading state
+      await new Promise(r => setTimeout(r, 50));
+
       const data = await parseExcelFile(file);
       if (isFileA) {
         setFilesA(prev => [...prev, data]);
-        // Auto select DISABLED per user request
-        // const newSheets = data.sheets.map(s => `${data.fileName}::${s.sheetName}`);
-        // setSelectedSheetsA(prev => [...prev, ...newSheets]);
       } else {
         setFilesB(prev => [...prev, data]);
-        // const newSheets = data.sheets.map(s => `${data.fileName}::${s.sheetName}`);
-        // setSelectedSheetsB(prev => [...prev, ...newSheets]);
       }
     } catch (error) {
       alert('Error parsing file: ' + (error as Error).message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -369,6 +370,7 @@ function App() {
         filesA={filesA}
         filesB={filesB}
       />
+      <LoadingOverlay isLoading={isProcessing} />
     </div>
   );
 }

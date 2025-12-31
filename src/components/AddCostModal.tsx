@@ -69,7 +69,8 @@ export const AddCostModal: React.FC<AddCostModalProps> = ({
     const [selectedB, setSelectedB] = useState<string[]>([]);
     const [searchTermA, setSearchTermA] = useState('');
     const [searchTermB, setSearchTermB] = useState('');
-    const [addressInput, setAddressInput] = useState('');
+    const [addressInputA, setAddressInputA] = useState('');
+    const [addressInputB, setAddressInputB] = useState('');
 
     const usedA = useMemo(() => getUsedColumns(mappingA), [mappingA]);
     const usedB = useMemo(() => getUsedColumns(mappingB), [mappingB]);
@@ -88,20 +89,10 @@ export const AddCostModal: React.FC<AddCostModalProps> = ({
             // Search in files
             for (const file of files) {
                 for (const sheet of file.sheets) {
-                    // Check if this sheet's header row matches user request
-                    // parsed.r is 1-based row from Excel
-                    // sheet.headerRowIndex is 1-based header position
-                    // Default to 1 if undefined
                     const headerRow = sheet.headerRowIndex || 1;
-
                     if (headerRow === parsed.r) {
                         const val = sheet.headers[parsed.c];
-                        if (val) {
-                            found.add(val);
-                            // Found a match in this file, maybe stop? 
-                            // But maybe other files have different headers at same pos?
-                            // Let's collect all unique matches.
-                        }
+                        if (val) found.add(val);
                     }
                 }
             }
@@ -109,25 +100,22 @@ export const AddCostModal: React.FC<AddCostModalProps> = ({
         return Array.from(found);
     };
 
-    const handleAddressLookup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleAddressLookupA = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
-        setAddressInput(val);
-
-        // Auto-select based on input
+        setAddressInputA(val);
         if (val.trim()) {
             const foundA = resolveHeadersFromAddresses(val, filesA);
-            const foundB = resolveHeadersFromAddresses(val, filesB);
-
-            // Merge with existing manual selections? 
-            // Or just override? The user might type "H1", get "Cost", then type "K1", get "Tax".
-            // Ideally we want to accumulate if they type multiple "H1:K1".
-
-            // Current strategy: If input is present, we try to sync selection to it + manual actions?
-            // Simpler: Just add found ones to selection if not present.
-            // But we don't want to clear manual clicks.
-            // Let's just add found ones.
-
+            // Append found headers, avoiding duplicates
             setSelectedA(prev => Array.from(new Set([...prev, ...foundA])));
+        }
+    };
+
+    const handleAddressLookupB = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setAddressInputB(val);
+        if (val.trim()) {
+            const foundB = resolveHeadersFromAddresses(val, filesB);
+            // Append found headers, avoiding duplicates
             setSelectedB(prev => Array.from(new Set([...prev, ...foundB])));
         }
     };
@@ -138,7 +126,8 @@ export const AddCostModal: React.FC<AddCostModalProps> = ({
         setName('');
         setSelectedA([]);
         setSelectedB([]);
-        setAddressInput('');
+        setAddressInputA('');
+        setAddressInputB('');
         onClose();
     };
 
@@ -154,7 +143,7 @@ export const AddCostModal: React.FC<AddCostModalProps> = ({
         }
     };
 
-    // ... renderColumnList helper (unchanged) ...
+    // ... renderColumnList helper ...
     const renderColumnList = (
         headers: string[],
         selected: string[],
@@ -162,18 +151,32 @@ export const AddCostModal: React.FC<AddCostModalProps> = ({
         searchTerm: string,
         setSearchTerm: (s: string) => void,
         title: string,
-        usedSet: Set<string>
+        usedSet: Set<string>,
+        addressInput: string,
+        onAddressChange: (e: React.ChangeEvent<HTMLInputElement>) => void
     ) => (
-        <div className="flex-1 min-w-[200px]">
+        <div className="flex-1 min-w-[200px] flex flex-col h-full">
             <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">{title}</label>
+
+            {/* Address Lookup Input for this side */}
+            <div className="mb-2">
+                <input
+                    type="text"
+                    value={addressInput}
+                    onChange={onAddressChange}
+                    placeholder="Tìm theo vị trí (VD: H1, K2)"
+                    className="w-full text-xs border border-blue-200 bg-blue-50/50 rounded p-1.5 focus:border-blue-400 outline-none placeholder:text-gray-400"
+                />
+            </div>
+
             <input
                 type="text"
-                placeholder="Tìm cột..."
+                placeholder="Tìm theo tên cột..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 className="w-full text-xs border border-gray-200 rounded mb-1 p-1"
             />
-            <div className="border border-gray-200 rounded h-40 overflow-y-auto bg-gray-50 p-1 space-y-0.5">
+            <div className="border border-gray-200 rounded h-40 overflow-y-auto bg-gray-50 p-1 space-y-0.5 flex-1">
                 {Array.isArray(headers) && headers
                     .filter(h => {
                         if (typeof h !== 'string') return false;
@@ -204,7 +207,7 @@ export const AddCostModal: React.FC<AddCostModalProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] animate-in fade-in zoom-in duration-200">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[90vh] animate-in fade-in zoom-in duration-200">
                 <div className="flex items-center justify-between p-4 border-b">
                     <h2 className="text-lg font-bold text-gray-900">Thêm Chi Phí Mới</h2>
                     <button onClick={onClose} className="text-gray-400 hover:text-red-500">
@@ -212,7 +215,7 @@ export const AddCostModal: React.FC<AddCostModalProps> = ({
                     </button>
                 </div>
 
-                <div className="p-6 space-y-6 overflow-y-auto">
+                <div className="p-6 space-y-6 overflow-y-auto flex-1">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                             Tên loại chi phí <span className="text-red-500">*</span>
@@ -227,23 +230,14 @@ export const AddCostModal: React.FC<AddCostModalProps> = ({
                         />
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Tìm nhanh bằng vị trí ô (Excel)
-                        </label>
-                        <input
-                            type="text"
-                            value={addressInput}
-                            onChange={handleAddressLookup}
-                            placeholder="Ví dụ: H1, K2, F5 (nhập để tự động chọn cột tương ứng)"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-blue-50/30"
-                        />
-                        <p className="text-xs text-gray-400 mt-1">Nhập tọa độ ô chứa tiêu đề trong file Excel để tự động tìm.</p>
+                    {/* Note about address lookup */}
+                    <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-700 border border-blue-100">
+                        <strong>Mẹo:</strong> Bạn có thể nhập tọa độ ô Excel (ví dụ: <strong>H1, AA3</strong>) vào ô tìm kiếm nhanh bên dưới để tự động chọn cột tương ứng.
                     </div>
 
-                    <div className="flex gap-4 flex-wrap">
-                        {renderColumnList(headersA, selectedA, setSelectedA, searchTermA, setSearchTermA, "Cột bên A", usedA)}
-                        {renderColumnList(headersB, selectedB, setSelectedB, searchTermB, setSearchTermB, "Cột bên B", usedB)}
+                    <div className="flex gap-6 h-[320px]">
+                        {renderColumnList(headersA, selectedA, setSelectedA, searchTermA, setSearchTermA, "Cột bên A", usedA, addressInputA, handleAddressLookupA)}
+                        {renderColumnList(headersB, selectedB, setSelectedB, searchTermB, setSearchTermB, "Cột bên B", usedB, addressInputB, handleAddressLookupB)}
                     </div>
                 </div>
 
