@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
-import { ArrowRightLeft, PlayCircle, RefreshCw, Trash2, Plus } from 'lucide-react';
+import { ArrowRightLeft, PlayCircle, RefreshCw, Trash2, Plus, BookOpen } from 'lucide-react';
 import { FileUploader } from './components/FileUploader';
 import { ColumnMapper } from './components/ColumnMapper';
 import { SheetSelector } from './components/SheetSelector';
 import { ResultsTable } from './components/ResultsTable';
 import { AddCostModal } from './components/AddCostModal';
+import { GuideModal } from './components/GuideModal';
 import { parseExcelFile } from './utils/excelParser';
 import { compareBatchFiles } from './utils/comparator';
 import { scanHeaders } from './utils/heuristicMapper';
@@ -44,6 +45,7 @@ function App() {
   const [results, setResults] = useState<ComparisonResult[] | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isAddCostModalOpen, setIsAddCostModalOpen] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Track heights of sheet selectors to synchronize them
   const [sheetHeights, setSheetHeights] = useState<Record<string, number>>({});
@@ -202,14 +204,22 @@ function App() {
             </div>
             <h1 className="text-xl font-bold text-gray-900">So Sánh Chi Phí</h1>
           </div>
-          {results && (
+          <div className="flex items-center gap-4">
             <button
-              onClick={handleReset}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+              onClick={() => setIsGuideOpen(true)}
+              className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 font-medium px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
             >
-              <RefreshCw className="w-4 h-4" /> Làm mới
+              <BookOpen className="w-4 h-4" /> Hướng dẫn
             </button>
-          )}
+            {results && (
+              <button
+                onClick={handleReset}
+                className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+              >
+                <RefreshCw className="w-4 h-4" /> Làm mới
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -370,6 +380,12 @@ function App() {
         filesA={filesA}
         filesB={filesB}
       />
+
+      <GuideModal
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+      />
+
       <LoadingOverlay isLoading={isProcessing} />
     </div>
   );
